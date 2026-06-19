@@ -1,14 +1,28 @@
-import os
 from dotenv import load_dotenv
 import google.generativeai as genai
 
+from src.settings import get_gemini_api_key
+
 load_dotenv()
 
-genai.configure(
-    api_key=os.getenv("GEMINI_API_KEY")
-)
+_MODEL = None
 
-model = genai.GenerativeModel("gemini-2.5-flash")
+
+def _get_model():
+    global _MODEL
+
+    if _MODEL is None:
+        api_key = get_gemini_api_key()
+
+        if not api_key:
+            raise RuntimeError(
+                "GEMINI_API_KEY is missing. Configure Streamlit Secrets or a local .env file."
+            )
+
+        genai.configure(api_key=api_key)
+        _MODEL = genai.GenerativeModel("gemini-2.5-flash")
+
+    return _MODEL
 
 
 def generate_response(query, context, persona):
@@ -49,6 +63,6 @@ def generate_response(query, context, persona):
     {query}
     """
 
-    response = model.generate_content(prompt)
+    response = _get_model().generate_content(prompt)
 
     return response.text

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import streamlit as st
 
 from src.persona_detector import detect_persona
@@ -8,6 +10,10 @@ from src.handoff import generate_handoff
 from sentence_transformers import SentenceTransformer
 from langchain_community.vectorstores import Chroma
 from langchain_core.embeddings import Embeddings
+
+
+APP_ROOT = Path(__file__).resolve().parent
+VECTOR_DB_PATH = APP_ROOT / "vector_db"
 
 
 class SentenceTransformerEmbeddings(Embeddings):
@@ -24,12 +30,33 @@ class SentenceTransformerEmbeddings(Embeddings):
         return self.model.encode(text).tolist()
 
 
+@st.cache_resource(show_spinner="Loading embedding model...")
+def get_embeddings():
+    return SentenceTransformerEmbeddings()
+
+
+@st.cache_resource(show_spinner="Loading knowledge base...")
+def get_vector_db():
+    if not VECTOR_DB_PATH.exists():
+        raise FileNotFoundError(
+            f"Missing ChromaDB directory: {VECTOR_DB_PATH}"
+        )
+
+    return Chroma(
+        persist_directory=str(VECTOR_DB_PATH),
+        embedding_function=get_embeddings()
+    )
+
+
 st.set_page_config(
     page_title="Persona-Aware Support Agent",
     layout="wide"
 )
 
 st.title("🤖 Persona-Aware Customer Support Agent")
+st.caption(
+    "Gemini credentials are read from Streamlit Secrets or GEMINI_API_KEY."
+)
 
 query = st.text_area(
     "Enter your support query",
@@ -42,12 +69,12 @@ if st.button("Submit"):
 
         persona = detect_persona(query)
 
-        embeddings = SentenceTransformerEmbeddings()
-
-        db = Chroma(
-            persist_directory="vector_db",
-            embedding_function=embeddings
-        )
+        try:
+            db = get_vector_db()
+        except Exception as exc:
+            st.error("Unable to load the ChromaDB knowledge base.")
+            st.exception(exc)
+            st.stop()
 
         results = db.similarity_search(query, k=5)
 
@@ -90,11 +117,18 @@ if st.button("Submit"):
                 [doc.page_content for doc in results]
             )
 
-            response = generate_response(
-                query,
-                context,
-                persona
-            )
+            try:
+                response = generate_response(
+                    query,
+                    context,
+                    persona
+                )
+            except Exception as exc:
+                st.error(
+                    "Gemini is not configured. Set GEMINI_API_KEY in Streamlit Secrets."
+                )
+                st.exception(exc)
+                st.stop()
 
             st.subheader("Generated Response")
             st.write(response)
