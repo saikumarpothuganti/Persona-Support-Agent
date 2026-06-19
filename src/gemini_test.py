@@ -9,7 +9,7 @@ api_key = get_gemini_api_key()
 
 if not api_key:
     raise RuntimeError(
-        "GEMINI_API_KEY is missing. Configure Streamlit Secrets or a local .env file."
+        "GEMINI_API_KEY"
     )
 
 genai.configure(api_key=api_key)
